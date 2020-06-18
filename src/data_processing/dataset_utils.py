@@ -164,6 +164,7 @@ def parser(record, new_labels_dict, image_dims, resize_dims):
 
         label = tf.cast(features["label"], tf.int32)
         new_label = new_labels_dict.lookup(label)
+        labels_one_hot = tf.one_hot(tf.cast(new_label, tf.int32), tf.cast(new_labels_dict.size(), tf.int32))
 
         image_shape = tf.stack(list(image_dims))
         image = tf.decode_raw(features["image_raw"], tf.uint8)
@@ -177,7 +178,7 @@ def parser(record, new_labels_dict, image_dims, resize_dims):
                 align_corners=False,
                 preserve_aspect_ratio=False)
 
-    return image, new_label
+    return image, new_label, labels_one_hot
 
 
 def array_to_dataset(data_array, labels_array, batch_size):
@@ -210,13 +211,14 @@ def tfrecords_to_dataset(filenames, new_labels_dict, batch_size, im_size, shuffl
                 tf.data.TFRecordDataset, cycle_length=len(filenames),
                 block_length=max(2, batch_size // len(filenames))))
 
+        if shuffle:
+            dataset = dataset.shuffle(buffer_size=1000000)
         dataset = dataset.apply(
             tf.contrib.data.map_and_batch(map_func=lambda x: parser(x, new_labels_dict, im_size,
                                                                     re_size),
                                           batch_size=batch_size,
                                           num_parallel_calls=4, drop_remainder=True))
-        if shuffle:
-            dataset = dataset.shuffle(buffer_size=10)
+
         dataset.prefetch(buffer_size=batch_size * 10)
     return dataset
 
@@ -224,8 +226,7 @@ def tfrecords_to_dataset(filenames, new_labels_dict, batch_size, im_size, shuffl
 def deploy_dataset(filenames, new_labels_dict, batch_size, image_dims, shuffle=True):
     dataset = tfrecords_to_dataset(filenames, new_labels_dict, batch_size, image_dims, shuffle)
     iterator = dataset.make_initializable_iterator()
-    image_batch, label_batch = iterator.get_next()
-    labels_one_hot = tf.one_hot(label_batch, len(filenames))
+    image_batch, label_batch, labels_one_hot = iterator.get_next()
     return iterator, image_batch, label_batch, labels_one_hot
 
 
@@ -249,13 +250,11 @@ def read_dataset_csv(dataset_path, val_ways):
     train_num_samples = dataset["train_num_samples"].values
     val_samples = dataset["test_num_samples"].values
     train_indices = np.arange(len(train_names))
-    # train data
     np.random.shuffle(train_indices)
-    train_class_indices = train_indices[:-val_ways]
-    train_class_names = train_names[train_class_indices]
-    train_filenames = [join_paths(i, "train") for i in train_class_indices]
-
-    val_class_indices = np.random.choice(train_class_indices, val_ways, replace=False)
+    train_indices = train_indices[:-val_ways]
+    val_class_indices = np.random.choice(train_indices, val_ways, replace=False)
+    train_class_names = train_names[val_class_indices]
+    train_filenames = [join_paths(i, "train") for i in val_class_indices]
     val_class_names = val_names[val_class_indices]
     val_num_samples = val_samples[val_class_indices]
     val_filenames = [join_paths(i, "test") for i in val_class_indices]
@@ -269,5 +268,5 @@ def read_dataset_csv(dataset_path, val_ways):
     num_test_samples = sum(test_num_samples)
 
     return train_class_names, val_class_names, test_class_names, train_filenames, val_filenames, \
-           test_filenames, train_class_indices, val_class_indices, test_class_indices, \
+           test_filenames, val_class_indices, val_class_indices, test_class_indices, \
            num_val_samples, num_test_samples

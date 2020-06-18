@@ -1,8 +1,7 @@
 results/
 figures/
+
 *.pickle
-Makefile
-siamese_runs.job
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

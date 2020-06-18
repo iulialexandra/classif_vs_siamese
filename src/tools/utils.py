@@ -7,8 +7,9 @@ import csv
 import numpy as np
 import signal
 from random import shuffle
-from models.original_nets import *
-from models.horizontal_nets import *
+from pathlib import Path
+from networks.original_nets import *
+from networks.horizontal_nets import *
 import random as rn
 
 import time
@@ -75,7 +76,8 @@ def make_results_dir(args):
     date = "{}_{}_{}-{}_{}_{}_{}".format(now.year, now.month, now.day, now.hour, now.minute,
                                          now.second, now.microsecond)
     if args.results_path is None:
-        save_path = os.path.join(os.getcwd(), "results")
+        parent_path = Path().absolute().parent
+        save_path = os.path.join(parent_path, "results")
     else:
         save_path = args.results_path
     if args.left_classif_factor > 0:
@@ -155,8 +157,8 @@ def sweep_directories(directory_list, token=None):
     return files
 
 
-def measure_time(method):
-    def timed(*args, **kw):
+def timed(method):
+    def timeit(*args, **kw):
         start_time = time.time()
         result = method(*args, **kw)
         end_time = time.time()
@@ -165,13 +167,11 @@ def measure_time(method):
         logger.info("{} run completed in {:.3f}s".format(method.__name__, elapsed_time))
         return result
 
-    return timed
+    return timeit
 
 
-def metrics_to_csv(filepath, values):
+def metrics_to_csv(filepath, values, fieldnames):
     with open(filepath, 'w') as csvfile:
-        fieldnames = ["left_loss", "left_acc", "right_loss", "right_acc", "siamese_loss",
-                      "siamese_acc", "siamese_val_accuracy", "siamese_test_accuracy"]
         values_dict = dict(zip(fieldnames, values))
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
